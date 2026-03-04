@@ -14,8 +14,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          path: './'
 
   lint:
     runs-on: ubuntu-latest
@@ -36,8 +34,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          path: './'
       - name: Install TruffleHog
         run: |
           curl -LJO https://github.com/trufflesecurity/trufflehog/releases/latest/download/trufflehog-linux-amd64
@@ -55,8 +51,6 @@ jobs:
           node-version: '20'
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          path: './'
       - name: Install dependencies
         run: npm install
       - name: Build project
@@ -72,8 +66,6 @@ jobs:
           node-version: '20'
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          path: './'
       - name: Install Vercel CLI
         run: npm install -g vercel
       - name: Pull Vercel environment
