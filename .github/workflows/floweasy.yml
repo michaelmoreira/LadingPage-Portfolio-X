@@ -32,8 +32,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run GitHub Secrets Scan
-        uses: actions/secret-scan@v1
+      - name: Run Trufflehog Secret Scan
+        uses: trufflesecurity/trufflehog-action@v2
 
   build:
     runs-on: ubuntu-latest
