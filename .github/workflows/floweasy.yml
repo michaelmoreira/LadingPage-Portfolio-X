@@ -12,11 +12,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
+      
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -26,69 +27,97 @@ jobs:
 
   sast:
     runs-on: ubuntu-latest
+    needs: lint
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run CodeQL Analysis
-        uses: github/codeql-action/init@v2
-        with:
-          languages: javascript
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
-
-  sca:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run SCA with npm audit
-        run: npm audit --audit-level=high
-
-  secrets:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run Secret Scanning
-        uses: actions/secret-scan@v1
-
-  sbom:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
-
-      - name: Install CycloneDX
-        run: npm install -g @cyclonedx/cyclonedx-npm
-
-      - name: Generate SBOM
-        run: cyclonedx-npm --output-file sbom.xml
-
-  build:
-    runs-on: ubuntu-latest
-    needs: [lint, sast, sca, secrets, sbom]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build project
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+    
+      - name: Perform CodeQL Analysis
+        run: |
+          npm run build
+          github/codeql-action/autobuild@v3
+
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: '<path-to-sarif-file>'
+
+  sca:
+    runs-on: ubuntu-latest
+    needs: sast
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=moderate
+
+  secrets:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan for secrets
+        uses: actions/secret-scan@v1
+
+  sbom:
+    runs-on: ubuntu-latest
+    needs: sca
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Generate SBOM
+        run: npm run npx @cyclonedx/bom -o bom.xml
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v3
+        with:
+          name: sbom
+          path: bom.xml
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [sast, sca, secrets, sbom]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
         run: npm run build
 
   deploy:
@@ -97,14 +126,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel
 
       - name: Deploy to Vercel
         env:
