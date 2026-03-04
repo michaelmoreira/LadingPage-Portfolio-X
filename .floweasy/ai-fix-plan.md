@@ -1,10 +1,10 @@
 # AI Fix Plan
 
 Root cause:
-The ESLint linting job failed due to unused variables and an incorrect TypeScript error comment.
+The ESLint step failed due to TypeScript-eslint rules being violated.
 
 Suggested fix:
-Correct the ESLint errors by removing unused variables and replacing @ts-ignore with @ts-expect-error where applicable. Clarify the types for variables that have been marked as 'any'.
+Review the indicated TypeScript-eslint errors in the StarBackground.tsx file and either fix the code or update ESLint configuration rules. Use @ts-expect-error instead of @ts-ignore if the comment is actively being used to ignore lines with errors.
 
 Additional steps:
-1. Review and fix the TypeScript and ESLint errors based on the failure logs, specifically in './components/main/StarBackground.tsx'.
+1. Inspect the 'components/main/StarBackground.tsx' file and address the listed linting errors by updating the code or the lint configuration.
