@@ -1,13 +1,11 @@
 # AI Fix Plan
 
 Root cause:
-The linting step failed due to ESLint errors related to unused variables, use of @ts-ignore, and explicit any types.
+The linting step failed due to TypeScript ESLint errors in StarBackground.tsx.
 
 Suggested fix:
-Update the code to adhere to ESLint rules by removing unused variables, replacing @ts-ignore with @ts-expect-error where applicable, and specifying more specific types instead of any.
+Fix the TypeScript errors in StarBackground.tsx: remove unused variables, use '@ts-expect-error' instead of '@ts-ignore', and replace 'any' type with specific types.
 
 Additional steps:
-1. Check the file './components/main/StarBackground.tsx' and fix the reported ESLint issues.
-2. Remove unused variables that are flagged as errors.
-3. Replace @ts-ignore with @ts-expect-error in the file or remove it if the following line does not have an error.
-4. Specify appropriate types instead of using 'any' for the flagged variables.
+1. Correct the ESLint errors in ./components/main/StarBackground.tsx as indicated in the lint output.
+2. Re-run the GitHub Actions pipeline after making these changes to ensure the lint step passes.
