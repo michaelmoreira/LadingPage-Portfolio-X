@@ -3,139 +3,123 @@ name: CI/CD Pipeline
 on:
   push:
     branches:
-      - main
+      - circleci
   pull_request:
     branches:
-      - main
+      - circleci
 
 jobs:
   lint:
-    name: Lint Code
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
+      - run: npm install
+      - run: npm run lint
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-
-  sast:
-    name: Static Application Security Testing
+  test:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
+      - run: npm install
+      - run: npm test
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run SAST
-        uses: github/codeql-action/init@v2
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          languages: javascript
+          node-version: '20'
+      - run: npm install
+      - run: npm run build
 
-      - name: Perform CodeQL Analysis
+  sast:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run SAST
         uses: github/codeql-action/analyze@v2
+        with:
+          category: 'sast'
 
   sca:
-    name: Software Composition Analysis
     runs-on: ubuntu-latest
     needs: sast
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - name: Run SCA
+        uses: ossf/scorecard-action@v2
         with:
-          node-version: '20'
+          results_file_path: results.sarif
+      - name: Upload SCA Result
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: results.sarif
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Audit dependencies
-        run: npm audit --audit-level=moderate
-
-  secrets-scan:
-    name: Secrets Scanning
+  secrets:
     runs-on: ubuntu-latest
     needs: sca
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run GitHub secret scanning
-        uses: github/secret-scanning-run/actions/scan@main
+      - uses: actions/checkout@v4
+      - name: Detect Secrets
+        uses: actions/secret-scan@v1
+        with:
+          secrets_file: '.github/secrets.yml'
 
   sbom:
-    name: Generate SBOM
     runs-on: ubuntu-latest
-    needs: secrets-scan
+    needs: secrets
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - name: Generate SBOM 
+        run: npm audit --json > sbom.json
+      - uses: github/codeql-action/upload-sarif@v2
         with:
-          node-version: '20'
+          sarif_file: sbom.json
 
-      - name: Generate SBOM
-        run: npx cyclonedx-bom -e -o sbom.xml
-
-  build:
-    name: Build and Test
+  dast:
     runs-on: ubuntu-latest
     needs: sbom
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - name: Run DAST
+        uses: zaproxy/action-full-scan@v0.0.18
         with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run build
-        run: npm run build
-
-      - name: Run tests
-        run: npm test
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: 'https://your-deployed-app-url'
 
   deploy:
-    name: Deploy to Vercel
     runs-on: ubuntu-latest
-    needs: build
-    environment: production
+    needs: [dast, build]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
-
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
+      - run: npm install
+      - uses: amondnet/vercel-action@v20
         with:
-          vercelToken: ${{ secrets.VERCEL_TOKEN }}
-          vercelOrgId: ${{ secrets.VERCEL_ORG_ID }}
-          vercelProjectId: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-dir: ./
+
+  monitoring:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Monitoring
+        run: echo "Implement monitoring setup here"
