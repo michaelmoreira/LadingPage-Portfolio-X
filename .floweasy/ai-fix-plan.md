@@ -1,11 +1,11 @@
 # AI Fix Plan
 
 Root cause:
-The ESLint action failed because the code contains linting errors including unused variables and incorrect TypeScript comment usage.
+The 'lint' job failed because ESLint reported errors in the code, such as unused variables and the use of 'any' types without explicit type definitions.
 
 Suggested fix:
-The issues need to be addressed in the code files by correcting the TypeScript comments, removing unused variables, and specifying correct types instead of 'any'.
+Correct the ESLint errors by defining a proper type instead of 'any', addressing unused variables by removing or using them, and following ESLint's guidance on comments. This requires manual code corrections.
 
 Additional steps:
-1. Update the codebase to resolve the ESLint errors. Ensure to replace '@ts-ignore' with '@ts-expect-error' and remove unused variables.
-2. Consider running 'npm run lint' locally to see detailed linting errors and fix them before committing changes to the branch.
+1. Review and fix the ESLint errors in the specified files.
+2. Run 'next lint' locally to ensure all issues are resolved before committing changes.
