@@ -12,112 +12,127 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install dependencies
-      run: npm install
-    - name: Run ESLint
-      run: npm run lint
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run ESLint
+        run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
 
   sast:
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs: [test]
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install dependencies
-      run: npm install
-    - name: Run CodeQL
-      uses: github/codeql-action/init@v2
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Run CodeQL analysis
+        uses: github/codeql-action/init@v2
+        with:
+          languages: javascript
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v2
 
   sca:
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs: [sast]
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install dependencies
-      run: npm install
-    - name: Audit dependencies
-      run: npm audit --production --audit-level=moderate
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Audit NPM dependencies
+        run: npm audit --audit-level=high
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    needs: [sca]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Scan for secrets
+        uses: github/secret-scanning@v2
 
   sbom:
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs: [secrets-scan]
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install dependencies
-      run: npm install
-    - name: Generate SBOM
-      run: cyclonedx-bom -o sbom.xml
+      - name: Check out code
+        uses: actions/checkout@v4
 
-  secrets:
-    runs-on: ubuntu-latest
-    needs: [lint]
-    steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-    - name: Install Gitleaks
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/zricethezav/gitleaks/main/install.sh | bash
-    - name: Scan for secrets
-      run: gitleaks detect --source . --report-format sarif --report-path gitleaks.sarif
+      - name: Generate SBOM
+        run: npx @cyclonedx/cdxgen
 
   build:
     runs-on: ubuntu-latest
-    needs: [lint, sast, sca, secrets]
+    needs: [sbom]
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install dependencies
-      run: npm install
-    - name: Build project
-      run: npm run build
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, sbom]
+    needs: [build]
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install Vercel CLI
-      run: npm install -g vercel
-    - name: Pull Vercel environment
-      env:
-        VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      run: vercel pull --env --yes --token $VERCEL_TOKEN --scope ${{ vars.VERCEL_ORG_ID }}
-    - name: Build with Vercel
-      run: vercel build
-    - name: Deploy to Vercel
-      env:
-        VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-        VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      run: vercel deploy --prod --token $VERCEL_TOKEN --scope ${{ vars.VERCEL_ORG_ID }}
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install vercel-cli
+        run: npm install -g vercel
+
+      - name: Vercel pull
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production --token ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build with Vercel
+        run: vercel build
+
+      - name: Deploy with Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: prj_p7cN0X1jsjCYLhsbtjXiTDaZxBv1
+        run: vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }}
