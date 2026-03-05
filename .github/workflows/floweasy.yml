@@ -12,107 +12,112 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout Code
+    - name: Checkout source code
       uses: actions/checkout@v4
-
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
-
-    - name: Install Dependencies
-      run: npm ci
-
-    - name: Run Linter
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Run ESLint
       run: npm run lint
 
   sast:
     runs-on: ubuntu-latest
+    needs: [lint]
     steps:
-    - name: Checkout Code
+    - name: Checkout source code
       uses: actions/checkout@v4
-
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
-
-    - name: Run Static Application Security Testing
-      run: npm run lint
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Run CodeQL
+      uses: github/codeql-action/init@v2
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
 
   sca:
     runs-on: ubuntu-latest
+    needs: [lint]
     steps:
-    - name: Checkout Code
+    - name: Checkout source code
       uses: actions/checkout@v4
-
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
-
-    - name: Install Dependencies
-      run: npm ci
-
-    - name: Run Software Composition Analysis
-      run: npm audit --production
-
-  secrets:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-
-    - name: Scan for Secrets
-      uses: google/secrets-scanner-action@v1.0.0
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Audit dependencies
+      run: npm audit --production --audit-level=moderate
 
   sbom:
     runs-on: ubuntu-latest
+    needs: [lint]
     steps:
-    - name: Generate SBOM
-      uses: anchore/sbom-action@v0.8.0
+    - name: Checkout source code
+      uses: actions/checkout@v4
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
       with:
-        path: .
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Generate SBOM
+      run: cyclonedx-bom -o sbom.xml
+
+  secrets:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v4
+    - name: Install Gitleaks
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/zricethezav/gitleaks/main/install.sh | bash
+    - name: Scan for secrets
+      run: gitleaks detect --source . --report-format sarif --report-path gitleaks.sarif
 
   build:
     runs-on: ubuntu-latest
-    needs: [lint, sast, sca, secrets, sbom]
+    needs: [lint, sast, sca, secrets]
     steps:
-    - name: Checkout Code
+    - name: Checkout source code
       uses: actions/checkout@v4
-
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
-
-    - name: Install Dependencies
-      run: npm ci
-
-    - name: Build Project
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Build project
       run: npm run build
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, sbom]
     steps:
-    - name: Checkout Code
+    - name: Checkout source code
       uses: actions/checkout@v4
-
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
-
+        node-version: '20'
     - name: Install Vercel CLI
       run: npm install -g vercel
-
-    - name: Pull Vercel Environment Variables
-      run: vercel pull --scope ${{ vars.VERCEL_ORG_ID }} --project ${{ vars.VERCEL_PROJECT_ID }}
-
+    - name: Pull Vercel environment
+      env:
+        VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      run: vercel pull --env --yes --token $VERCEL_TOKEN --scope ${{ vars.VERCEL_ORG_ID }}
+    - name: Build with Vercel
+      run: vercel build
     - name: Deploy to Vercel
       env:
         VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      run: vercel --prod --confirm --token ${{ secrets.VERCEL_TOKEN }} --scope ${{ vars.VERCEL_ORG_ID }} --project ${{ vars.VERCEL_PROJECT_ID }}
+        VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+        VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      run: vercel deploy --prod --token $VERCEL_TOKEN --scope ${{ vars.VERCEL_ORG_ID }}
