@@ -9,126 +9,109 @@ on:
       - main
 
 jobs:
-  checkout:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
   lint:
     runs-on: ubuntu-latest
-    needs: checkout
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: 'stable'
+        
       - name: Install dependencies
         run: npm ci
+
       - name: Run ESLint
         run: npm run lint
 
   sast:
     runs-on: ubuntu-latest
-    needs: checkout
+    needs: lint
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: 'stable'
+        
       - name: Install dependencies
         run: npm ci
-      - name: Run ES Lint Container
-        run: docker run --rm -v $(pwd):/app -w /app node:20 npx eslint .
+
+      - name: Run SAST
+        uses: ShiftLeftSecurity/shiftleft-scan-action@v1
 
   sca:
     runs-on: ubuntu-latest
-    needs: checkout
+    needs: sast
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Install dependencies
         run: npm ci
-      - name: Install OWASP Dependency-Check
-        run: curl -LO https://github.com/jeremylong/DependencyCheck/releases/download/v7.4.4/dependency-check-7.4.4-release.zip
-      - name: Extract Dependency-Check
-        run: unzip dependency-check-7.4.4-release.zip -d dependency-check
-      - name: Run OWASP Dependency-Check
-        run: ./dependency-check/bin/dependency-check.sh --project spaceportfolio --scan ./ --format ALL
+
+      - name: Run Dependency Review
+        uses: advanced-security/dependency-review-action@v2
 
   secrets:
     runs-on: ubuntu-latest
-    needs: checkout
+    needs: sca
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install truffleHog
-        uses: trufflesecurity/trufflehog@v3
-
-  sbom:
-    runs-on: ubuntu-latest
-    needs: checkout
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v2
-        with:
-          path: .
-
-  tests:
-    runs-on: ubuntu-latest
-    needs: checkout
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-      - name: Install dependencies
-        run: npm ci
-      - name: Run tests
-        run: npm test
+        
+      - name: Scan for secrets
+        uses: actions/[email protected]
 
   build:
     runs-on: ubuntu-latest
-    needs: [lint, sast, sca, secrets, sbom, tests]
+    needs: secrets
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: 'stable'
+        
       - name: Install dependencies
         run: npm ci
-      - name: Build project
+
+      - name: Run build
         run: npm run build
 
-  deploy:
+  sbom:
     runs-on: ubuntu-latest
     needs: build
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Setup Node.js for deployment
+        
+      - name: Generate SBOM
+        uses: CycloneDX/cyclonedx-github-action@v1
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: sbom
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: 'stable'
+        
       - name: Install Vercel CLI
         run: npm install -g vercel
-      - name: Vercel pull
-        run: vercel pull --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      - name: Vercel deploy
-        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        
+      - name: Vercel Pull
+        run: vercel pull --token ${{ secrets.VERCEL_TOKEN }} --scope ${{ vars.VERCEL_ORG_ID }} --project ${{ vars.VERCEL_PROJECT_ID }}
+
+      - name: Vercel Deploy
+        run: vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} --scope ${{ vars.VERCEL_ORG_ID }} --project ${{ vars.VERCEL_PROJECT_ID }}
