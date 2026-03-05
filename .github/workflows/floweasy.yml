@@ -67,7 +67,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Install truffleHog
-        uses: trufflesecurity/trufflehog-actions@v4
+        uses: trufflesecurity/trufflehog@v3
 
   sbom:
     runs-on: ubuntu-latest
