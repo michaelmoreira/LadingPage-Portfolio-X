@@ -1,139 +1,119 @@
-name: CI/CD Pipeline
-
+name: FlowEasy CI/CD
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
-  lint:
+  quality-checks:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 'latest'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Run ESLint
-      run: npm run lint
-
-  test:
+  unit-tests:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [quality-checks]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Run Tests
+        run: npm run test -- --coverage
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 'latest'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Run Tests
-      run: npm run test
-
-  sast:
+  build-artifact:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [quality-checks]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Install CodeQL CLI
-      uses: github/codeql-action/init@v2
-      with:
-        languages: javascript
-    
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            .next/
+            dist/
+            build/
+          retention-days: 1
+
+  security-sast:
+    runs-on: ubuntu-latest
+    needs: [quality-checks, unit-tests, build-artifact]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep SAST Scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/default
 
   sca:
     runs-on: ubuntu-latest
-    needs: sast
+    needs: [quality-checks, unit-tests, build-artifact]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Dependency Audit
+        run: npm audit --audit-level=high
 
-    - name: Audit npm dependencies
-      run: npm audit --audit-level=moderate
-
-  secrets:
+  secrets-scan:
     runs-on: ubuntu-latest
-    needs: sca
+    needs: [quality-checks, unit-tests, build-artifact]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install TruffleHog
-      run: |
-        pip install truffleHog
-
-    - name: Run TruffleHog
-      run: trufflehog --entropy=False --json .
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@v3.82.13
+        with:
+          extra_args: --only-verified
 
   sbom:
     runs-on: ubuntu-latest
-    needs: secrets
+    needs: [quality-checks, unit-tests, build-artifact]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Generate SBOM
-      run: |
-        npm install -g @cyclonedx/bom
-        cyclonedx-bom -o bom.xml
+      - uses: actions/checkout@v4
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          artifact-name: sbom.spdx.json
 
-  build:
+  deploy-vercel:
     runs-on: ubuntu-latest
-    needs: sbom
+    needs: [quality-checks, unit-tests, build-artifact, security-sast, sca, secrets-scan]
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 'latest'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Build application
-      run: npm run build
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 'latest'
-
-    - name: Install Vercel CLI
-      run: npm install -g vercel
-
-    - name: Vercel Deployment
-      env:
-        VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-        VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      run: |
-        vercel pull --yes --environment=production
-        vercel build
-        vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
+      - uses: actions/checkout@v4
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+      - name: Pull Vercel Environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Build for Vercel
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "deploy_url=$url" >> $GITHUB_OUTPUT
