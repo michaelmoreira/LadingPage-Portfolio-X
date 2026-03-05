@@ -52,7 +52,7 @@ jobs:
       - name: Install Semgrep
         run: pip install semgrep
       - name: Run Semgrep SAST
-        run: semgrep --config=p/semgrep
+        run: semgrep --config=p/security-audit
 
   sbom:
     runs-on: ubuntu-latest
@@ -60,7 +60,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Generate SBOM
-        uses: cyclonedx/cyclonedx-action@v4
+        uses: CycloneDX/gh-cyclonedx-action@v1
 
   secrets:
     runs-on: ubuntu-latest
@@ -68,7 +68,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Run Secret Scan
-        uses: akashnimare/git-secrets-action@v3
+        uses: zricethezav/gitleaks-action@v1
 
   test:
     runs-on: ubuntu-latest
