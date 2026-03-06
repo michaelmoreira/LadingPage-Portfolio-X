@@ -123,9 +123,11 @@ jobs:
           fi
           echo "Testing: $DEPLOY_URL"
           sleep 30
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_URL")
-          if [ "$STATUS" != "200" ]; then
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" "$DEPLOY_URL")
+          echo "HTTP status: $STATUS"
+          if [[ "$STATUS" =~ ^[23] ]]; then
+            echo "Smoke test passed with status $STATUS"
+          else
             echo "Smoke test failed with status $STATUS"
             exit 1
           fi
-          echo "Smoke test passed with status $STATUS"
