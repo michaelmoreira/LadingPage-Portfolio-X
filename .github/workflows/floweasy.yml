@@ -100,9 +100,42 @@ jobs:
         with:
           artifact-name: sbom.spdx.json
 
-  deploy-vercel:
+  e2e-tests:
     runs-on: ubuntu-latest
     needs: [quality-checks, unit-tests, build-artifact, security-sast, sca, secrets-scan]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci || npm install
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+      - name: Run E2E Tests
+        run: npx playwright test
+      - name: Upload E2E Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  security-dast:
+    runs-on: ubuntu-latest
+    needs: [quality-checks, unit-tests, build-artifact, security-sast, sca, secrets-scan]
+    steps:
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: "http://localhost:3000"
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a"
+
+  deploy-vercel:
+    runs-on: ubuntu-latest
+    needs: [quality-checks, unit-tests, build-artifact, security-sast, sca, secrets-scan, e2e-tests, security-dast]
     env:
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
@@ -119,3 +152,17 @@ jobs:
         run: |
           url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           echo "deploy_url=$url" >> $GITHUB_OUTPUT
+
+  post-deploy-monitoring:
+    runs-on: ubuntu-latest
+    needs: [deploy-vercel]
+    steps:
+      - name: Smoke Test
+        run: |
+          sleep 30
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ needs.deploy-vercel.outputs.deploy_url || 'https://LadingPage-Portfolio-X.vercel.app' }}")
+          if [ "$STATUS" != "200" ]; then
+            echo "Smoke test failed with status $STATUS"
+            exit 1
+          fi
+          echo "Smoke test passed with status $STATUS"
