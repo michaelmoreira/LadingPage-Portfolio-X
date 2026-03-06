@@ -90,6 +90,8 @@ jobs:
   deploy-vercel:
     runs-on: ubuntu-latest
     needs: [quality-checks, build-artifact, security-sast, sca, secrets-scan]
+    outputs:
+      deploy_url: ${{ steps.deploy.outputs.deploy_url }}
     env:
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
@@ -104,8 +106,10 @@ jobs:
       - name: Deploy to Vercel
         id: deploy
         run: |
-          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
-          echo "deploy_url=$url" >> $GITHUB_OUTPUT
+          DEPLOY_OUTPUT=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} 2>&1)
+          URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[a-zA-Z0-9._-]+\.vercel\.app' | tail -1)
+          echo "deploy_url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployed to: $URL"
 
   post-deploy-monitoring:
     runs-on: ubuntu-latest
@@ -113,8 +117,13 @@ jobs:
     steps:
       - name: Smoke Test
         run: |
+          DEPLOY_URL="${{ needs.deploy-vercel.outputs.deploy_url }}"
+          if [ -z "$DEPLOY_URL" ]; then
+            DEPLOY_URL="https://ladingpage-portfolio-x.vercel.app"
+          fi
+          echo "Testing: $DEPLOY_URL"
           sleep 30
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ needs.deploy-vercel.outputs.deploy_url || 'https://LadingPage-Portfolio-X.vercel.app' }}")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_URL")
           if [ "$STATUS" != "200" ]; then
             echo "Smoke test failed with status $STATUS"
             exit 1
