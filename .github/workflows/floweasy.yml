@@ -9,9 +9,13 @@ jobs:
     steps:
       - run: echo "Hello"
       - name: Notify Slack
-        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           JOB_STATUS: ${{ job.status }}
         run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "Slack webhook not configured, skipping"
+            exit 0
+          fi
           echo "Would notify Slack with status $JOB_STATUS"
