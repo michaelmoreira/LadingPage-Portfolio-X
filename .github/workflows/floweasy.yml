@@ -113,6 +113,9 @@ jobs:
           target: "http://localhost:3000"
           cmd_options: "-a"
           fail_action: false
+      - name: Log ZAP Warnings
+        if: always()
+        run: echo "ZAP Scan completed with warnings: ${{ steps.zap.results.html-report-url }}"
 
   deploy-vercel:
     runs-on: ubuntu-latest
