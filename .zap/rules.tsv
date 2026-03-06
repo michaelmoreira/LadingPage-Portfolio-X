@@ -1,0 +1,3 @@
+1000	IGNORE	Information exposure through an error message
+1001	FAIL	Information disclosure - sensitive data
+1002	WARN	Insecure default vulnerability
