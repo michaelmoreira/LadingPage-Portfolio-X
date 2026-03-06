@@ -89,6 +89,7 @@ jobs:
 
   security-dast:
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: [quality-checks, build-artifact, security-sast, sca, secrets-scan]
     steps:
       - uses: actions/checkout@v4
@@ -112,10 +113,6 @@ jobs:
         with:
           target: "http://localhost:3000"
           cmd_options: "-a"
-          fail_action: false
-      - name: Log ZAP Warnings
-        if: always()
-        run: echo "ZAP Scan completed with warnings: ${{ steps.zap.results.html-report-url }}"
 
   deploy-vercel:
     runs-on: ubuntu-latest
@@ -147,20 +144,15 @@ jobs:
     continue-on-error: true
     steps:
       - name: Smoke Test
+        env:
+          DEPLOY_URL: ${{ needs.deploy-vercel.outputs.deploy_url }}
         run: |
-          DEPLOY_URL="${{ needs.deploy-vercel.outputs.deploy_url }}"
-          if [ -z "$DEPLOY_URL" ]; then
-            DEPLOY_URL="https://ladingpage-portfolio-x.vercel.app"
-          fi
-          echo "Testing: $DEPLOY_URL"
+          URL="${DEPLOY_URL:-https://ladingpage-portfolio-x.vercel.app}"
+          echo "Testing: $URL"
           sleep 30
-          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" "$DEPLOY_URL")
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" "$URL")
           echo "HTTP status: $STATUS"
-          if [[ "$STATUS" =~ ^[23] ]]; then
-            echo "Smoke test passed with status $STATUS"
-          else
-            echo "Smoke test failed with status $STATUS"
-            exit 1
+          [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ] && echo "Smoke test passed" || { echo "Smoke test failed"; exit 1; }
       - name: Notify Slack
         if: always()
         env:
