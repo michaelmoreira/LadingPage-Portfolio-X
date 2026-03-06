@@ -158,23 +158,3 @@ jobs:
             echo "Smoke test failed with status $STATUS"
             exit 1
           fi
-      - name: Notify Slack
-        if: ${{ always() && secrets.SLACK_WEBHOOK_URL != '' }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          DEPLOY_URL: ${{ needs.deploy-vercel.outputs.deploy_url }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          if [ "$JOB_STATUS" = "success" ]; then COLOR="#36a64f"; else COLOR="#dc3545"; fi
-          printf '{"attachments":[{"color":"%s","title":"Deploy %s","text":"michaelmoreira/LadingPage-Portfolio-X deployed to %s","footer":"FlowEasy CI/CD"}]}' "$COLOR" "$JOB_STATUS" "$DEPLOY_URL" > /tmp/slack_payload.json
-          curl -s -X POST "$SLACK_WEBHOOK_URL" -H "Content-Type: application/json" -d @/tmp/slack_payload.json
-      - name: Notify Discord
-        if: ${{ always() && secrets.DISCORD_WEBHOOK_URL != '' }}
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DEPLOY_URL: ${{ needs.deploy-vercel.outputs.deploy_url }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          if [ "$JOB_STATUS" = "success" ]; then COLOR=3066993; else COLOR=15158332; fi
-          printf '{"embeds":[{"color":%d,"title":"Deploy %s","description":"michaelmoreira/LadingPage-Portfolio-X deployed to %s","footer":{"text":"FlowEasy CI/CD"}}]}' "$COLOR" "$JOB_STATUS" "$DEPLOY_URL" > /tmp/discord_payload.json
-          curl -s -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d @/tmp/discord_payload.json
